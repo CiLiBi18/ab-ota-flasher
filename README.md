@@ -1,4 +1,4 @@
-# ab-ota-flasher
+# A/B OTA Flasher
 
 A Bash script to flash Android A/B OTA updates (via `payload.bin`) using `fastboot`, with optional custom image support (e.g. Magisk-patched `init_boot`).
 
