@@ -93,7 +93,7 @@ EXEMPLES
 NOTES
   • Les dossiers ota_extracted_* peuvent être supprimés après le flash.
   • Compatible avec tous les appareils Android A/B (partitions super dynamiques).
-  • Testé sur OnePlus 11 (OxygenOS 15 → 16) avec Magisk.
+  • Testé sur OnePlus 11 (OxygenOS 14 → 16) avec Magisk.
 
 HELP
 }
