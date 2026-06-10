@@ -1,0 +1,2 @@
+# Ce dossier est peuplé par ../get_deps.sh
+# Les binaires (fastboot, adb, payload-dumper-go) sont ignorés par .gitignore
