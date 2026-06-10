@@ -1,13 +1,14 @@
-# Dépendances téléchargées par get_deps.sh
-bin/fastboot
-bin/adb
-bin/payload-dumper-go
+# Dependencies downloaded by get_deps.sh (recreated automatically)
+bin/
 
-# Images OTA extraites (peuvent être très volumineuses)
+# Extracted OTA images (can be very large)
 ota_extracted_*/
 
-# Zips OTA
+# OTA zips
 *.zip
 
-# Fichiers temporaires
+# Custom/patched images
+*.img
+
+# Temporary files
 *.tmp
