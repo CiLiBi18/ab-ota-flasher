@@ -86,7 +86,7 @@ Boot device into fastboot mode
 
 ## Tested on
 
-- OnePlus 11 (salami) — Android 14/15 OTA updates
+- OnePlus 11 (CPH2449) — Android 14/15/16 OTA updates
 
 ## License
 
