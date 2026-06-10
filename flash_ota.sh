@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# flash_ota.sh — Flash une OTA Android A/B via fastboot
-# Dépôt  : https://github.com/CiLiBi18/ab-ota-flasher
-# Aide   : ./flash_ota.sh --help
+# flash_ota.sh — Flash an Android A/B OTA update via fastboot
+# Repo   : https://github.com/CiLiBi18/ab-ota-flasher
+# Help   : ./flash_ota.sh --help
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$SCRIPT_DIR/bin"
 
-# ------------------------------------------------------------------ couleurs
+# ------------------------------------------------------------------ colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 log()  { echo -e "${BLUE}[*]${NC} $*"; }
 ok()   { echo -e "${GREEN}[OK]${NC} $*"; }
@@ -17,96 +17,96 @@ warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 err()  { echo -e "${RED}[X]${NC} $*" >&2; }
 die()  { err "$*"; exit 1; }
 
-# ------------------------------------------------------------------ aide
+# ------------------------------------------------------------------ help
 show_help() {
   cat << 'HELP'
 
 USAGE
-  ./flash_ota.sh <ota.zip> [image_perso.img] [OPTIONS]
+  ./flash_ota.sh <ota.zip> [custom_image.img] [OPTIONS]
 
 ARGUMENTS
-  ota.zip           Fichier ZIP de l'OTA (doit contenir un payload.bin A/B)
-  image_perso.img   (Optionnel) Image à flasher après l'OTA.
-                    La partition cible est déduite du nom du fichier :
-                      init_boot_magisk.img  →  init_boot
-                      boot_patched.img      →  boot
-                      vendor_boot_ksu.img   →  vendor_boot
-                    Suffixes reconnus : _magisk, _patched, _root, _rooted,
-                                        _ksu, _kernelsu, _apatch, _mod
+  ota.zip             OTA zip file (must contain an A/B payload.bin)
+  custom_image.img    (Optional) Image to flash after the OTA.
+                      The target partition is inferred from the filename:
+                        init_boot_magisk.img  →  init_boot
+                        boot_patched.img      →  boot
+                        vendor_boot_ksu.img   →  vendor_boot
+                      Recognized suffixes: _magisk, _patched, _root, _rooted,
+                                           _ksu, _kernelsu, _apatch, _mod
 
 OPTIONS
-  --ota-no-flash    Extrait les images sans flasher l'OTA.
-                    Si une image perso est fournie, elle est flashée quand même.
-  --force-extract   Force la ré-extraction même si les images existent déjà.
-  -h, --help        Affiche cette aide.
+  --ota-no-flash    Extract images without flashing the OTA.
+                    If a custom image is provided, it will still be flashed.
+  --force-extract   Force re-extraction even if images already exist.
+  -h, --help        Show this help message.
 
-DÉPENDANCES
-  Les outils suivants sont cherchés en priorité dans ./bin/ (peuplé par
-  get_deps.sh), puis dans le PATH système :
+DEPENDENCIES
+  The following tools are searched in ./bin/ first (populated by get_deps.sh),
+  then in the system PATH:
     fastboot          (Android platform-tools)
     adb               (Android platform-tools)
     payload-dumper-go (https://github.com/ssut/payload-dumper-go)
 
-  Pour les installer automatiquement :
+  To install them automatically:
     ./get_deps.sh
 
-DÉROULEMENT
+FLASHING FLOW
   Phase 1 — fastbootd
-    • Annulation des snapshots Virtual A/B résiduels (libère l'espace COW)
-    • Flash de toutes les partitions OTA + image perso
-    • Partition logique absente/trop petite → recréation dans super
-    • Partition physique "Operation not permitted" → mise en file Phase 2
+    • Cancel any pending Virtual A/B snapshot (frees COW space)
+    • Flash all OTA partitions + custom image
+    • Logical partition missing/too small → recreate in super
+    • Physical partition "Operation not permitted" → queue for Phase 2
 
-  Phase 2 — bootloader  (uniquement si nécessaire)
-    • Flash des partitions refusées par fastbootd (ex: modem sur certains OEM)
-    • Utilise --slot=all pour écrire les deux slots
-    • Retry sur le slot actif uniquement si --slot=all échoue
+  Phase 2 — bootloader  (only if needed)
+    • Flash partitions rejected by fastbootd (e.g. modem on some OEMs)
+    • Uses --slot=all to write both slots
+    • Retries on active slot only if --slot=all fails
 
-  → Refuse le reboot si une partition est en échec définitif (exit 1)
+  → Refuses to reboot if any partition permanently failed (exit 1)
 
-WORKFLOW RECOMMANDÉ AVEC MAGISK
-  1. Extraire les images de la nouvelle OTA :
+RECOMMENDED WORKFLOW WITH MAGISK
+  1. Extract images from the new OTA:
        ./flash_ota.sh OTA.zip --ota-no-flash
 
-  2. Patcher init_boot.img depuis ota_extracted_*/images/ dans l'app Magisk
-     (Magisk → Installer → Sélectionner et patcher un fichier)
+  2. Patch init_boot.img from ota_extracted_*/images/ in the Magisk app
+     (Magisk → Install → Select and Patch a File)
 
-  3. Flasher l'OTA + l'image patchée :
+  3. Flash the OTA + patched image:
        ./flash_ota.sh OTA.zip init_boot_magisk.img
 
-  Si l'OTA a déjà été flashée et qu'il faut seulement re-flasher Magisk :
+  If the OTA was already flashed and you only need to re-flash Magisk:
        ./flash_ota.sh OTA.zip init_boot_magisk.img --ota-no-flash
 
-EXEMPLES
-  # Flash OTA seul
+EXAMPLES
+  # Flash OTA only
   ./flash_ota.sh OnePlus11_16.0.5.702.zip
 
-  # Flash OTA + root Magisk (cas le plus courant)
+  # Flash OTA + Magisk root (most common case)
   ./flash_ota.sh OnePlus11_16.0.5.702.zip init_boot_magisk.img
 
-  # Extraction seule (pour patcher init_boot avant de flasher)
+  # Extract only (to patch init_boot before flashing)
   ./flash_ota.sh OnePlus11_16.0.5.702.zip --ota-no-flash
 
-  # Re-flasher Magisk sans re-flasher l'OTA
+  # Re-flash Magisk without re-flashing the OTA
   ./flash_ota.sh OnePlus11_16.0.5.702.zip init_boot_magisk.img --ota-no-flash
 
 NOTES
-  • Les dossiers ota_extracted_* peuvent être supprimés après le flash.
-  • Compatible avec tous les appareils Android A/B (partitions super dynamiques).
-  • Testé sur OnePlus 11 (OxygenOS 14 → 16) avec Magisk.
+  • ota_extracted_* directories can be deleted after flashing.
+  • Compatible with all A/B Android devices (dynamic super partitions).
+  • Tested on OnePlus 11 (OxygenOS 14 → 16) with Magisk.
 
 HELP
 }
 
-# ------------------------------------------------------------------ résolution des outils
-# Cherche un outil dans ./bin/ en priorité, puis dans le PATH système.
+# ------------------------------------------------------------------ tool resolution
+# Looks for a tool in ./bin/ first, then falls back to system PATH.
 _tool() {
   if   [[ -x "$BIN_DIR/$1" ]]; then echo "$BIN_DIR/$1"
   elif command -v "$1" >/dev/null 2>&1; then command -v "$1"
   fi
 }
 
-# ------------------------------------------------------------------ arguments
+# ------------------------------------------------------------------ argument parsing
 OTA_ZIP=""; CUSTOM_IMG=""; OTA_NO_FLASH=0; FORCE_EXTRACT=0
 
 for arg in "$@"; do
@@ -116,23 +116,23 @@ for arg in "$@"; do
     *.zip) OTA_ZIP="$arg" ;;
     *.img) CUSTOM_IMG="$arg" ;;
     -h|--help) show_help; exit 0 ;;
-    *) die "Argument inconnu : $arg  (utilisez --help pour l'aide)" ;;
+    *) die "Unknown argument: $arg  (use --help for usage)" ;;
   esac
 done
 
 [[ -n "$OTA_ZIP" ]] || { show_help; exit 1; }
-[[ -f "$OTA_ZIP" ]] || die "Fichier introuvable : $OTA_ZIP"
-[[ -z "$CUSTOM_IMG" || -f "$CUSTOM_IMG" ]] || die "Image introuvable : $CUSTOM_IMG"
+[[ -f "$OTA_ZIP" ]] || die "File not found: $OTA_ZIP"
+[[ -z "$CUSTOM_IMG" || -f "$CUSTOM_IMG" ]] || die "Image not found: $CUSTOM_IMG"
 
-# ------------------------------------------------------------------ vérification des outils
+# ------------------------------------------------------------------ tool check
 FASTBOOT="$(_tool fastboot   || true)"
 ADB="$(     _tool adb        || true)"
 DUMPER="$(  _tool payload-dumper-go || _tool payload_dumper || true)"
 
-[[ -n "$FASTBOOT" ]] || die "fastboot introuvable. Lance './get_deps.sh' pour l'installer."
-[[ -n "$DUMPER"   ]] || die "payload-dumper-go introuvable. Lance './get_deps.sh' pour l'installer."
+[[ -n "$FASTBOOT" ]] || die "fastboot not found. Run './get_deps.sh' to install it."
+[[ -n "$DUMPER"   ]] || die "payload-dumper-go not found. Run './get_deps.sh' to install it."
 
-# ------------------------------------------------------------------ constantes
+# ------------------------------------------------------------------ constants
 SKIP_PARTS=" userdata metadata "
 LOGICAL_PARTS=" system system_ext vendor product odm vendor_dlkm odm_dlkm system_dlkm \
   mi_ext my_bigball my_carrier my_company my_engineering my_heytap my_manifest \
@@ -149,19 +149,19 @@ partition_from_img() {
 
 CURRENT_SLOT=""
 
-# ------------------------------------------------------------------ helpers device
+# ------------------------------------------------------------------ device helpers
 wait_fastboot() {
-  log "Attente du device en fastboot…"
+  log "Waiting for device in fastboot mode..."
   until "$FASTBOOT" devices 2>/dev/null | grep -q .; do sleep 1; done
-  ok "Device : $("$FASTBOOT" devices | head -n1)"
+  ok "Device: $("$FASTBOOT" devices | head -n1)"
 }
 
 ensure_fastboot_mode() {
   "$FASTBOOT" devices 2>/dev/null | grep -q . && return
   if [[ -n "$ADB" ]] && "$ADB" get-state >/dev/null 2>&1; then
-    log "Reboot bootloader via adb…"; "$ADB" reboot bootloader
+    log "Rebooting to bootloader via adb..."; "$ADB" reboot bootloader
   else
-    warn "Aucun device détecté — mode bootloader manuel (Vol- + Power)."
+    warn "No device detected — enter bootloader manually (Vol- + Power)."
   fi
   wait_fastboot
 }
@@ -170,26 +170,26 @@ enter_fastbootd() {
   local us
   us="$("$FASTBOOT" getvar is-userspace 2>&1 | grep -oP 'is-userspace:\s*\K\w+' || true)"
   if [[ "$us" != "yes" ]]; then
-    log "Passage en fastbootd…"; "$FASTBOOT" reboot fastboot; wait_fastboot
+    log "Switching to fastbootd..."; "$FASTBOOT" reboot fastboot; wait_fastboot
   else
-    ok "Déjà en fastbootd."
+    ok "Already in fastbootd."
   fi
   CURRENT_SLOT="$("$FASTBOOT" getvar current-slot 2>&1 | grep -oP 'current-slot:\s*\K\w+' || true)"
-  [[ -n "$CURRENT_SLOT" ]] && ok "Slot actif : ${CURRENT_SLOT}"
+  [[ -n "$CURRENT_SLOT" ]] && ok "Active slot: ${CURRENT_SLOT}"
 }
 
-# Retourne 0 si le device est bien en bootloader (is-userspace = no), 1 sinon.
+# Returns 0 if device is in bootloader mode (is-userspace = no), 1 otherwise.
 enter_bootloader() {
   local us slot
-  log "Passage en mode bootloader…"
+  log "Switching to bootloader mode..."
   "$FASTBOOT" reboot bootloader; wait_fastboot
   us="$("$FASTBOOT" getvar is-userspace 2>&1 | grep -oP 'is-userspace:\s*\K\w+' || true)"
   if [[ "$us" == "yes" ]]; then
-    warn "Le device est retombé en fastbootd (bootloader désactivé sur cet appareil ?)."
+    warn "Device fell back to fastbootd (bootloader disabled on this device?)."
     return 1
   fi
   slot="$("$FASTBOOT" getvar current-slot 2>&1 | grep -oP 'current-slot:\s*\K\w+' || true)"
-  ok "Mode bootloader — slot actif : ${slot:-inconnu}"
+  ok "Bootloader mode — active slot: ${slot:-unknown}"
   return 0
 }
 
@@ -197,17 +197,17 @@ enter_bootloader() {
 cancel_snapshot() {
   local status
   status="$("$FASTBOOT" getvar snapshot-update-status 2>&1 | grep -oP 'snapshot-update-status:\s*\K\w+' || true)"
-  log "Snapshot Virtual A/B : ${status:-inconnu}"
+  log "Virtual A/B snapshot: ${status:-unknown}"
   if [[ -n "$status" && "$status" != "none" ]]; then
-    log "Annulation du snapshot…"
-    "$FASTBOOT" snapshot-update cancel && ok "Snapshot annulé." \
-      || warn "snapshot-update cancel a échoué (peut être sans conséquence)."
+    log "Cancelling snapshot..."
+    "$FASTBOOT" snapshot-update cancel && ok "Snapshot cancelled." \
+      || warn "snapshot-update cancel failed (may be harmless)."
   fi
 }
 
 free_cow_space() {
   local p s
-  log "Nettoyage des partitions COW résiduelles dans super…"
+  log "Cleaning up residual COW partitions in super..."
   for p in $LOGICAL_PARTS; do
     for s in a b; do
       "$FASTBOOT" delete-logical-partition "${p}_${s}-cow" >/dev/null 2>&1 || true
@@ -215,12 +215,12 @@ free_cow_space() {
   done
 }
 
-# ------------------------------------------------------------------ recréation partition logique
+# ------------------------------------------------------------------ logical partition recreation
 recreate_and_flash_logical() {
   local part="$1" img="$2" size suffixed
   size="$(stat -c%s "$img")"
   suffixed="${part}_${CURRENT_SLOT:-a}"
-  warn "    Recréation de '$suffixed' (${size} octets)…"
+  warn "    Recreating '$suffixed' (${size} bytes)..."
   "$FASTBOOT" delete-logical-partition "${suffixed}-cow" >/dev/null 2>&1 || true
   "$FASTBOOT" delete-logical-partition "$suffixed"       >/dev/null 2>&1 || true
   if ! "$FASTBOOT" create-logical-partition "$suffixed" "$size" 2>/dev/null; then
@@ -229,13 +229,13 @@ recreate_and_flash_logical() {
     "$FASTBOOT" create-logical-partition "$suffixed" "$size" || return 1
   fi
   "$FASTBOOT" flash "$suffixed" "$img" || return 1
-  ok "    '$part' flashée après recréation."
+  ok "    '$part' flashed after recreation."
 }
 
 # ------------------------------------------------------------------ flash_part
-# BOOTLOADER_QUEUE : entrées "part|img|mode"
-#   mode=all     → Phase 2 : fastboot flash --slot=all  (partitions OTA)
-#   mode=current → Phase 2 : fastboot flash             (image perso, slot actif seulement)
+# BOOTLOADER_QUEUE entries: "part|img|mode"
+#   mode=all     → Phase 2: fastboot flash --slot=all  (OTA partitions)
+#   mode=current → Phase 2: fastboot flash             (custom image, active slot only)
 BOOTLOADER_QUEUE=()
 FAILED_PARTS=()
 FLASH_IDX=0
@@ -247,36 +247,36 @@ flash_part() {
   FLASH_IDX=$((FLASH_IDX + 1))
   log "[${FLASH_IDX}/${FLASH_TOTAL}] flash ${part}  ←  $(basename "$img")"
 
-  # 1) tentative principale en fastbootd
+  # 1) primary attempt in fastbootd
   if out="$("$FASTBOOT" flash "$part" "$img" 2>&1)"; then
     echo "$out" | tail -n1; return 0
   fi
   echo "$out" >&2
 
-  # 2) partition logique absente ou trop petite
+  # 2) logical partition missing or too small
   if is_logical "$part" && grep -qE "Not enough space|No such file or directory" <<< "$out"; then
     if recreate_and_flash_logical "$part" "$img"; then
       return 0
     fi
-    warn "    '$part' : recréation échouée → erreur définitive."
+    warn "    '$part': recreation failed → permanent error."
     FAILED_PARTS+=("$part"); return 0
   fi
 
-  # 3) partition physique protégée → passe bootloader
+  # 3) protected physical partition → queue for bootloader
   if ! is_logical "$part" && grep -q "Operation not permitted" <<< "$out"; then
-    warn "    '$part' protégée en fastbootd → planifiée pour la Phase 2 (bootloader)."
+    warn "    '$part' blocked in fastbootd → queued for Phase 2 (bootloader)."
     BOOTLOADER_QUEUE+=("${part}|${img}|${bl_mode}"); return 0
   fi
 
-  # 4) autres cas → retry sur le slot explicite
+  # 4) other cases → retry on explicit slot
   if [[ -n "${CURRENT_SLOT:-}" ]]; then
-    warn "    Retry : fastboot flash ${part}_${CURRENT_SLOT}"
+    warn "    Retry: fastboot flash ${part}_${CURRENT_SLOT}"
     if "$FASTBOOT" flash "${part}_${CURRENT_SLOT}" "$img"; then
-      ok "    '$part' flashée sur le slot ${CURRENT_SLOT}."; return 0
+      ok "    '$part' flashed on slot ${CURRENT_SLOT}."; return 0
     fi
   fi
 
-  warn "    Échec définitif de '$part'."
+  warn "    Permanent failure for '$part'."
   FAILED_PARTS+=("$part")
 }
 
@@ -287,13 +287,13 @@ IMG_DIR="$WORKDIR/images"
 
 NB_IMG=$(ls "$IMG_DIR"/*.img 2>/dev/null | wc -l || true)
 if [[ $FORCE_EXTRACT -eq 0 && $NB_IMG -gt 0 ]]; then
-  ok "$NB_IMG images déjà extraites — extraction sautée (--force-extract pour forcer)."
+  ok "$NB_IMG images already extracted — skipping (use --force-extract to force)."
 else
   mkdir -p "$IMG_DIR"
-  log "Extraction de payload.bin depuis $ZIP_NAME…"
+  log "Extracting payload.bin from $ZIP_NAME..."
   unzip -o "$OTA_ZIP" payload.bin -d "$WORKDIR" >/dev/null \
-    || die "payload.bin absent du zip (OTA non A/B ?)"
-  log "Extraction des images avec $(basename "$DUMPER")…"
+    || die "payload.bin not found in zip (not an A/B OTA?)"
+  log "Extracting images with $(basename "$DUMPER")..."
   if [[ "$(basename "$DUMPER")" == "payload-dumper-go" ]]; then
     "$DUMPER" -output "$IMG_DIR" "$WORKDIR/payload.bin" >/dev/null
   else
@@ -301,38 +301,38 @@ else
   fi
   rm -f "$WORKDIR/payload.bin"
   NB_IMG=$(ls "$IMG_DIR"/*.img 2>/dev/null | wc -l)
-  (( NB_IMG > 0 )) || die "Aucune image extraite — payload corrompu ?"
-  ok "$NB_IMG images extraites dans : $IMG_DIR"
+  (( NB_IMG > 0 )) || die "No images extracted — corrupted payload?"
+  ok "$NB_IMG images extracted to: $IMG_DIR"
 fi
 
 OTA_IMGS=()
 for img in "$IMG_DIR"/*.img; do
   part="$(basename "$img" .img)"
-  if is_skipped "$part"; then warn "Partition ignorée : $part"; continue; fi
+  if is_skipped "$part"; then warn "Skipping partition: $part"; continue; fi
   OTA_IMGS+=("$img")
 done
 
 echo
-log "Récapitulatif :"
+log "Summary:"
 echo "    OTA zip          : $OTA_ZIP"
-echo "    Images extraites : $NB_IMG ($IMG_DIR)"
-echo "    Flash OTA        : $([[ $OTA_NO_FLASH -eq 1 ]] && echo 'NON (--ota-no-flash)' || echo "OUI (${#OTA_IMGS[@]} partitions)")"
+echo "    Extracted images : $NB_IMG ($IMG_DIR)"
+echo "    Flash OTA        : $([[ $OTA_NO_FLASH -eq 1 ]] && echo 'NO (--ota-no-flash)' || echo "YES (${#OTA_IMGS[@]} partitions)")"
 if [[ -n "$CUSTOM_IMG" ]]; then
   CUSTOM_PART="$(partition_from_img "$CUSTOM_IMG")"
-  echo "    Image perso      : $(basename "$CUSTOM_IMG") → partition '$CUSTOM_PART'"
+  echo "    Custom image     : $(basename "$CUSTOM_IMG") → partition '$CUSTOM_PART'"
 fi
 echo
 
 if [[ $OTA_NO_FLASH -eq 1 && -z "$CUSTOM_IMG" ]]; then
-  ok "Extraction terminée, rien à flasher."; exit 0
+  ok "Extraction complete, nothing to flash."; exit 0
 fi
 
-read -r -p "Continuer le flash ? [o/N] " rep
-[[ "$rep" =~ ^[oOyY]$ ]] || { warn "Abandon."; exit 0; }
+read -r -p "Continue with flash? [y/N] " rep
+[[ "$rep" =~ ^[yY]$ ]] || { warn "Aborted."; exit 0; }
 
 ensure_fastboot_mode
 
-# ======================================================== Phase 1 : fastbootd
+# ======================================================== Phase 1: fastbootd
 echo
 log "══════════════════════════════════════"
 log "  Phase 1 — fastbootd"
@@ -353,18 +353,18 @@ fi
 if [[ -n "$CUSTOM_IMG" ]]; then
   case "$CUSTOM_PART" in
     magisk*|patched*|"")
-      die "Impossible de déduire la partition depuis '$(basename "$CUSTOM_IMG")'. Renomme-le en <partition>_magisk.img (ex: init_boot_magisk.img)." ;;
+      die "Cannot infer partition from '$(basename "$CUSTOM_IMG")'. Rename it as <partition>_magisk.img (e.g. init_boot_magisk.img)." ;;
   esac
   echo
-  log "Flash de l'image perso sur '$CUSTOM_PART' (slot actif uniquement)…"
+  log "Flashing custom image on '$CUSTOM_PART' (active slot only)..."
   flash_part "$CUSTOM_PART" "$CUSTOM_IMG" "current"
 fi
 
-# ====================================================== Phase 2 : bootloader
+# ====================================================== Phase 2: bootloader
 if (( ${#BOOTLOADER_QUEUE[@]} > 0 )); then
   echo
   log "══════════════════════════════════════"
-  log "  Phase 2 — bootloader (${#BOOTLOADER_QUEUE[@]} partition(s) refusée(s) par fastbootd)"
+  log "  Phase 2 — bootloader (${#BOOTLOADER_QUEUE[@]} partition(s) rejected by fastbootd)"
   log "══════════════════════════════════════"
 
   if enter_bootloader; then
@@ -374,32 +374,32 @@ if (( ${#BOOTLOADER_QUEUE[@]} > 0 )); then
       bl_idx=$((bl_idx + 1))
 
       if [[ "$bl_mode" == "all" ]]; then
-        # Partition OTA : écrire les deux slots pour les garder cohérents
+        # OTA partition: write both slots to keep them in sync
         log "[${bl_idx}/${bl_total}] flash --slot=all ${bl_part}  ←  $(basename "$bl_img")"
         if "$FASTBOOT" flash --slot=all "$bl_part" "$bl_img"; then
-          ok "    '$bl_part' flashée sur les deux slots."
+          ok "    '$bl_part' flashed on both slots."
         else
-          warn "    --slot=all a échoué. Retry sur le slot actif uniquement…"
+          warn "    --slot=all failed. Retrying on active slot only..."
           if "$FASTBOOT" flash "$bl_part" "$bl_img"; then
-            ok "    '$bl_part' flashée sur le slot actif."
+            ok "    '$bl_part' flashed on active slot."
           else
-            err "    Échec définitif de '$bl_part' même en bootloader."
+            err "    Permanent failure for '$bl_part' even in bootloader mode."
             FAILED_PARTS+=("$bl_part")
           fi
         fi
       else
-        # Image perso : slot actif uniquement
+        # Custom image: active slot only
         log "[${bl_idx}/${bl_total}] flash ${bl_part}  ←  $(basename "$bl_img")"
         if "$FASTBOOT" flash "$bl_part" "$bl_img"; then
-          ok "    '$bl_part' flashée sur le slot actif."
+          ok "    '$bl_part' flashed on active slot."
         else
-          err "    Échec définitif de '$bl_part' même en bootloader."
+          err "    Permanent failure for '$bl_part' even in bootloader mode."
           FAILED_PARTS+=("$bl_part")
         fi
       fi
     done
   else
-    err "Impossible d'atteindre le mode bootloader. Partitions non flashées :"
+    err "Could not reach bootloader mode. Partitions not flashed:"
     for entry in "${BOOTLOADER_QUEUE[@]}"; do
       bl_part="${entry%%|*}"
       err "  • $bl_part"
@@ -408,19 +408,19 @@ if (( ${#BOOTLOADER_QUEUE[@]} > 0 )); then
   fi
 fi
 
-# ================================================================= Résultat
+# ================================================================= Result
 echo
 if (( ${#FAILED_PARTS[@]} > 0 )); then
-  err "Flash INCOMPLET — partitions en échec définitif :"
+  err "Flash INCOMPLETE — permanently failed partitions:"
   for p in "${FAILED_PARTS[@]}"; do err "  • $p"; done
-  err "NE REDÉMARRE PAS. Résous les erreurs ci-dessus d'abord."
+  err "DO NOT REBOOT. Fix the errors above first."
   exit 1
 fi
 
-ok "Flash terminé sans erreur."
-read -r -p "Redémarrer maintenant ? [O/n] " rep
+ok "Flash completed successfully."
+read -r -p "Reboot now? [Y/n] " rep
 if [[ ! "$rep" =~ ^[nN]$ ]]; then
-  "$FASTBOOT" reboot; ok "Redémarrage en cours."
+  "$FASTBOOT" reboot; ok "Rebooting..."
 else
-  warn "Pense à faire 'fastboot reboot' toi-même."
+  warn "Remember to run 'fastboot reboot' yourself."
 fi
