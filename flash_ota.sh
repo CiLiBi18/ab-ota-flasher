@@ -201,8 +201,11 @@ cancel_snapshot() {
   log "Virtual A/B snapshot: ${status:-unknown}"
   if [[ -n "$status" && "$status" != "none" ]]; then
     log "Cancelling snapshot..."
-    "$FASTBOOT" snapshot-update cancel && ok "Snapshot cancelled." \
-      || warn "snapshot-update cancel failed (may be harmless)."
+    if "$FASTBOOT" snapshot-update cancel; then
+      ok "Snapshot cancelled."
+    else
+      warn "snapshot-update cancel failed (may be harmless)."
+    fi
   fi
 }
 
