@@ -5,6 +5,7 @@
 # Help   : ./flash_ota.sh --help
 
 set -euo pipefail
+shopt -s nullglob
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$SCRIPT_DIR/bin"
@@ -285,7 +286,8 @@ ZIP_NAME="$(basename "$OTA_ZIP")"
 WORKDIR="$(pwd)/ota_extracted_${ZIP_NAME%.zip}"
 IMG_DIR="$WORKDIR/images"
 
-NB_IMG=$(ls "$IMG_DIR"/*.img 2>/dev/null | wc -l || true)
+_existing_imgs=("$IMG_DIR"/*.img)
+NB_IMG=${#_existing_imgs[@]}
 if [[ $FORCE_EXTRACT -eq 0 && $NB_IMG -gt 0 ]]; then
   ok "$NB_IMG images already extracted — skipping (use --force-extract to force)."
 else
@@ -300,7 +302,8 @@ else
     "$DUMPER" --out "$IMG_DIR" "$WORKDIR/payload.bin" >/dev/null
   fi
   rm -f "$WORKDIR/payload.bin"
-  NB_IMG=$(ls "$IMG_DIR"/*.img 2>/dev/null | wc -l)
+  _existing_imgs=("$IMG_DIR"/*.img)
+  NB_IMG=${#_existing_imgs[@]}
   (( NB_IMG > 0 )) || die "No images extracted — corrupted payload?"
   ok "$NB_IMG images extracted to: $IMG_DIR"
 fi
