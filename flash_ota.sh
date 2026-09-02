@@ -256,15 +256,31 @@ fmt_duration() {
   fi
 }
 
+# fmt_size <bytes> → "264 KB" / "2.6 GB"  (integer-only, no bc/awk dependency)
+fmt_size() {
+  local b=$1 div unit whole frac
+  if   (( b >= 1073741824 )); then div=1073741824; unit="GB"
+  elif (( b >= 1048576 ));    then div=1048576;    unit="MB"
+  elif (( b >= 1024 ));       then div=1024;       unit="KB"
+  else printf '%d B' "$b"; return
+  fi
+  whole=$(( b / div )); frac=$(( (b % div) * 10 / div ))
+  printf '%d.%d %s' "$whole" "$frac" "$unit"
+}
+
 # flash_part <partition> <image> [all|current]
 # Progress (%) and ETA are weighted by image size, not partition count — a
 # 3GB system.img takes far longer than a 16KB aop_config.img, so a plain
 # "N/48" ratio would be a misleading estimate of how much work is left.
-# ETA uses the average throughput observed so far this run (BYTES_DONE/SECONDS).
+# Both the overall ETA and the per-file estimate use the average throughput
+# observed so far this run (BYTES_DONE/SECONDS) — the file size is always
+# shown too, so a transfer that looks "stuck" is clearly explained (a 2.6GB
+# partition takes a lot longer than the tiny ones around it).
 flash_part() {
-  local part="$1" img="$2" bl_mode="${3:-all}" out size progress
+  local part="$1" img="$2" bl_mode="${3:-all}" out size size_h progress rate
   FLASH_IDX=$((FLASH_IDX + 1))
   size="$(stat -c%s "$img" 2>/dev/null || echo 0)"
+  size_h="$(fmt_size "$size")"
 
   progress=""
   if (( TOTAL_BYTES > 0 )); then
@@ -272,16 +288,17 @@ flash_part() {
     # Wait a few seconds before showing an ETA — extrapolating from the very
     # first (often tiny) partition gives a wildly wrong estimate.
     if (( SECONDS >= 3 && BYTES_DONE > 0 )); then
-      local rate=$(( BYTES_DONE / SECONDS ))
+      rate=$(( BYTES_DONE / SECONDS ))
       if (( rate > 0 )); then
         progress+=", ETA ~$(fmt_duration $(( (TOTAL_BYTES - BYTES_DONE) / rate )))"
+        size_h+=", est. ~$(fmt_duration $(( size / rate )))"
       fi
     fi
     progress+=")"
   fi
   BYTES_DONE=$((BYTES_DONE + size))
 
-  log "[${FLASH_IDX}/${FLASH_TOTAL}]${progress} flash ${part}  ←  $(basename "$img")"
+  log "[${FLASH_IDX}/${FLASH_TOTAL}]${progress} flash ${part} (${size_h})  ←  $(basename "$img")"
 
   # 1) primary attempt in fastbootd
   if out="$("$FASTBOOT" flash "$part" "$img" 2>&1)"; then
@@ -370,7 +387,7 @@ read -r -p "Continue with flash? [y/N] " rep
 [[ "$rep" =~ ^[yY]$ ]] || { warn "Aborted."; exit 0; }
 
 ensure_fastboot_mode
-SECONDS=0
+FLASH_STARTED_AT="$(date +%s)"
 
 # ======================================================== Phase 1: fastbootd
 echo
@@ -392,6 +409,14 @@ if [[ -n "$CUSTOM_IMG" ]]; then
   FLASH_TOTAL=$((FLASH_TOTAL + 1))
   TOTAL_BYTES=$((TOTAL_BYTES + $(stat -c%s "$CUSTOM_IMG")))
 fi
+
+# Separate from FLASH_STARTED_AT on purpose: the reboot-to-fastbootd
+# handshake above can take 30s+ on its own (confirmed on real hardware) and
+# transfers zero bytes, which would badly skew the throughput-based ETA
+# below if it were included. SECONDS is reset right where byte transfer
+# actually begins, so flash_part's rate estimate reflects real transfer
+# speed only.
+SECONDS=0
 
 if [[ $OTA_NO_FLASH -eq 0 ]]; then
   for img in "${OTA_IMGS[@]}"; do
@@ -459,7 +484,7 @@ fi
 
 # ================================================================= Result
 echo
-log "Elapsed (flash time): $(fmt_duration "$SECONDS")"
+log "Elapsed (flash time): $(fmt_duration "$(( $(date +%s) - FLASH_STARTED_AT ))")"
 if (( ${#FAILED_PARTS[@]} > 0 )); then
   err "Flash INCOMPLETE — permanently failed partitions:"
   for p in "${FAILED_PARTS[@]}"; do err "  • $p"; done
