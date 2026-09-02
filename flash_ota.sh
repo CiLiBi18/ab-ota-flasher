@@ -122,7 +122,6 @@ for arg in "$@"; do
 done
 
 [[ -n "$OTA_ZIP" ]] || { show_help; exit 1; }
-[[ -f "$OTA_ZIP" ]] || die "File not found: $OTA_ZIP"
 [[ -z "$CUSTOM_IMG" || -f "$CUSTOM_IMG" ]] || die "Image not found: $CUSTOM_IMG"
 
 # ------------------------------------------------------------------ tool check
@@ -294,6 +293,7 @@ NB_IMG=${#_existing_imgs[@]}
 if [[ $FORCE_EXTRACT -eq 0 && $NB_IMG -gt 0 ]]; then
   ok "$NB_IMG images already extracted — skipping (use --force-extract to force)."
 else
+  [[ -f "$OTA_ZIP" ]] || die "File not found: $OTA_ZIP (needed to extract — no cached images in $IMG_DIR)"
   mkdir -p "$IMG_DIR"
   log "Extracting payload.bin from $ZIP_NAME..."
   unzip -o "$OTA_ZIP" payload.bin -d "$WORKDIR" >/dev/null \
