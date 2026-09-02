@@ -243,12 +243,45 @@ BOOTLOADER_QUEUE=()
 FAILED_PARTS=()
 FLASH_IDX=0
 FLASH_TOTAL=0
+TOTAL_BYTES=0
+BYTES_DONE=0
+
+# fmt_duration <seconds> → "12s" / "3m05s" / "1h02m03s"
+fmt_duration() {
+  local s=$1 h m
+  h=$(( s / 3600 )); m=$(( (s % 3600) / 60 )); s=$(( s % 60 ))
+  if   (( h > 0 )); then printf '%dh%02dm%02ds' "$h" "$m" "$s"
+  elif (( m > 0 )); then printf '%dm%02ds' "$m" "$s"
+  else                   printf '%ds' "$s"
+  fi
+}
 
 # flash_part <partition> <image> [all|current]
+# Progress (%) and ETA are weighted by image size, not partition count — a
+# 3GB system.img takes far longer than a 16KB aop_config.img, so a plain
+# "N/48" ratio would be a misleading estimate of how much work is left.
+# ETA uses the average throughput observed so far this run (BYTES_DONE/SECONDS).
 flash_part() {
-  local part="$1" img="$2" bl_mode="${3:-all}" out
+  local part="$1" img="$2" bl_mode="${3:-all}" out size progress
   FLASH_IDX=$((FLASH_IDX + 1))
-  log "[${FLASH_IDX}/${FLASH_TOTAL}] flash ${part}  ←  $(basename "$img")"
+  size="$(stat -c%s "$img" 2>/dev/null || echo 0)"
+
+  progress=""
+  if (( TOTAL_BYTES > 0 )); then
+    progress=" (~$(( BYTES_DONE * 100 / TOTAL_BYTES ))%"
+    # Wait a few seconds before showing an ETA — extrapolating from the very
+    # first (often tiny) partition gives a wildly wrong estimate.
+    if (( SECONDS >= 3 && BYTES_DONE > 0 )); then
+      local rate=$(( BYTES_DONE / SECONDS ))
+      if (( rate > 0 )); then
+        progress+=", ETA ~$(fmt_duration $(( (TOTAL_BYTES - BYTES_DONE) / rate )))"
+      fi
+    fi
+    progress+=")"
+  fi
+  BYTES_DONE=$((BYTES_DONE + size))
+
+  log "[${FLASH_IDX}/${FLASH_TOTAL}]${progress} flash ${part}  ←  $(basename "$img")"
 
   # 1) primary attempt in fastbootd
   if out="$("$FASTBOOT" flash "$part" "$img" 2>&1)"; then
@@ -337,6 +370,7 @@ read -r -p "Continue with flash? [y/N] " rep
 [[ "$rep" =~ ^[yY]$ ]] || { warn "Aborted."; exit 0; }
 
 ensure_fastboot_mode
+SECONDS=0
 
 # ======================================================== Phase 1: fastbootd
 echo
@@ -347,8 +381,17 @@ enter_fastbootd
 cancel_snapshot
 
 FLASH_TOTAL=0
-[[ $OTA_NO_FLASH -eq 0 ]] && FLASH_TOTAL=${#OTA_IMGS[@]}
-[[ -n "$CUSTOM_IMG" ]] && FLASH_TOTAL=$((FLASH_TOTAL + 1))
+TOTAL_BYTES=0
+if [[ $OTA_NO_FLASH -eq 0 ]]; then
+  FLASH_TOTAL=${#OTA_IMGS[@]}
+  for img in "${OTA_IMGS[@]}"; do
+    TOTAL_BYTES=$((TOTAL_BYTES + $(stat -c%s "$img")))
+  done
+fi
+if [[ -n "$CUSTOM_IMG" ]]; then
+  FLASH_TOTAL=$((FLASH_TOTAL + 1))
+  TOTAL_BYTES=$((TOTAL_BYTES + $(stat -c%s "$CUSTOM_IMG")))
+fi
 
 if [[ $OTA_NO_FLASH -eq 0 ]]; then
   for img in "${OTA_IMGS[@]}"; do
@@ -416,6 +459,7 @@ fi
 
 # ================================================================= Result
 echo
+log "Elapsed (flash time): $(fmt_duration "$SECONDS")"
 if (( ${#FAILED_PARTS[@]} > 0 )); then
   err "Flash INCOMPLETE — permanently failed partitions:"
   for p in "${FAILED_PARTS[@]}"; do err "  • $p"; done
